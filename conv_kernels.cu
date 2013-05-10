@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 __global__ void kkeepconv4D(const float*__restrict__ devicedata,const float*__restrict__ devicefilters,float*__restrict__ deviceout,uint32 pdo,uint32 blockcount,uint32 dc,uint32 dy,uint32 dx,uint32 fy,uint32 fx)
 {
-	int di= ((blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x; //pdo
+    int di= ((blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x; //pdo
     if (di>=blockcount*dc*dy*dx) return;
     int px=di/blockcount; di%=blockcount;
     int py=px/dx; px%=dx;
@@ -38,6 +38,55 @@ __global__ void kkeepconv4D(const float*__restrict__ devicedata,const float*__re
             otmp+=devicefilters[(pc*fy+fyi)*fx+fxi]*devicedata[((pc*dy+fyi+py)*dx+fxi+px)*blockcount+di];
     deviceout[((pc*dy+py+fy/2)*dx+px+fx/2)*blockcount+di]=otmp;
 }
+__global__ void kkeepconv4Dalllayer(const float*__restrict__ devicedata,const float*__restrict__ devicefilters,float*__restrict__ deviceout,uint32 pdo,uint32 blockcount,uint32 dc,uint32 dy,uint32 dx,uint32 fc,uint32 fy,uint32 fx)
+{
+    int di= ((blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x; //pdo
+    if (di>=blockcount*fc*dy*dx) return;
+    int px=di/blockcount; di%=blockcount;
+    int py=px/dx; px%=dx;
+    int pco=py/dy; py%=dy;
+    if (di>=pdo) return;
+    float otmp=0.0f;
+
+    py-=fy/2; px-=fx/2;
+    for (int fyi=0;fyi<fy;fyi++) if (fyi+py>=0&&fyi+py<dy)
+        for (int fxi=0;fxi<fx;fxi++) if (fxi+px>=0&&fxi+px<dx)
+            for (int pc=0;pc<dc;pc++) 
+                otmp+=devicefilters[((pco*fy+fyi)*fx+fxi)*dc+pc]*devicedata[((pc*dy+fyi+py)*dx+fxi+px)*blockcount+di];
+    deviceout[((pco*dy+py+fy/2)*dx+px+fx/2)*blockcount+di]=otmp;
+}
+__global__ void kgradconvkeep4D(const float*__restrict__ devicedata,const float*__restrict__ devicegrad,float*__restrict__ devicefilters,uint32 pdo,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx)
+{
+    int oy=dy-fy+1, ox=dx-fx+1;
+    int pc=((blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x; //pdo
+    if (pc>=fc*fy*fx*dc) return;
+    int pfx=pc/dc; pc%=dc;
+    int pfy=pfx/fx; pfx%=fx;
+    int pco=pfy/fy; pfy%=fy;
+
+    float tmp=0.0f;
+    for (int pi=0;pi<pdo;pi++)
+        for (int pyo=0;pyo<oy;pyo++)
+            for (int pxo=0;pxo<ox;pxo++)
+                tmp+=devicegrad[((pi*fc+pco)*dy+pyo)*dx+pxo]*devicedata[((pi*dy+pyo+pfy)*dx+pxo+pfx)*dc+pc];
+
+    devicefilters[((pco*fy+pfy)*fx+pfx)*dc+pc]+=tmp;
+}
+__global__ void kreverseconvkeep4D(float*__restrict__ devicedata,const float*__restrict__ devicefilters,const float*__restrict__ deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx)
+{
+	int di= ((blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x; //pdo
+	if (di>=blockcount*dc*dy*dx) return;
+	int pxo=di/blockcount; di%=blockcount; //ox
+	int pyo=pxo/dx; pxo%=dx; //oy
+	int pco=pyo/dy; pyo%=dy; //fc
+	if (di>=pdo) return;
+	//float otmp=0.0f;
+	for (int py=0;py<fy;py++) if (((uint32)(py+pyo-fy/2))<dy)
+		for (int px=0;px<fx;px++) if (((uint32)(px+pxo-fx/2))<dx)
+            for (int pc=0;pc<dc;pc++)
+			    atomicAdd(&devicedata[(((py+pyo)*dx+px+pxo)*dc+pc)*blockcount+di],devicefilters[((pco*fy+py)*fx+px)*dc+pc] * deviceout[((pco*dy+py)*dx+px)*blockcount+di]);
+}
+
 __global__ void kconvolution4D(const float*__restrict__ devicedata,const float*__restrict__ devicefilters,float*__restrict__ deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx,uint32 oy,uint32 ox)
 {
 	int di= ((blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x)*blockDim.x+threadIdx.x; //pdo

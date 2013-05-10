@@ -48,6 +48,9 @@ dim3 __dim3_dummy;
 
 //convolutions
 __global__ void kkeepconv4D(const float*devicedata,const float*devicefilters,float*deviceout,uint32 pdo,uint32 blockcount,uint32 dc,uint32 dy,uint32 dx,uint32 fy,uint32 fx);
+__global__ void kkeepconv4Dalllayer(const float*devicedata,const float*devicefilters,float*deviceout,uint32 pdo,uint32 blockcount,uint32 dc,uint32 dy,uint32 dx,uint32 fc,uint32 fy,uint32 fx);
+__global__ void kgradconvkeep4D(const float*devicedata,const float*devicegrad,float*devicefilters,uint32 pdo,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx);
+__global__ void kreverseconvkeep4D(float*devicedata,const float*devicefilters,const float*deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx);
 __global__ void kconvolution4D(const float*devicedata,const float*devicefilters,float*deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx,uint32 oy,uint32 ox);
 __global__ void kconvolution4D_sm(const float*devicedata,const float*devicefilters,float*deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx,uint32 oy,uint32 ox);
 __global__ void kgradconvolution4D(const float*devicedata,const float*devicegrad,float*devicefilters,uint32 pdo,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx,uint32 oy,uint32 ox);

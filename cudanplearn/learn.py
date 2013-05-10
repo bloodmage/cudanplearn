@@ -237,7 +237,7 @@ def convkeep4D(data,filters,out):
         Number_Of_Data, Layers, YSize, XSize
 
     This function applies a no-shrinking convolution on each layer.
-    FilterX and FilterY must be odd number, The center of filter will move through each element of
+    FilterX and FilterY must be odd number. The center of filter will move through each element of
     data in same layer to generate output.
     """
     ASSERTTYPE(data)
@@ -250,7 +250,7 @@ def convkeep4D(data,filters,out):
     
     if ni!=no: raise Exception, "Data count mismatch"
     if li!=lf or li!=lo: raise Exception, "Layers mismatch"
-    if (yf&1)!=1 or (xf&1)!=1: raise Exception, "Filter must be odd shape"
+    if (yf&1)!=1 or (xf&1)!=1: raise Exception, "FilterX and FilterY must be odd"
     if yi!=yo or xi!=xo: raise Exception, "Shape mismatch"
 
     data=data.ctypes.data_as(ct.POINTER(ct.c_float))
@@ -258,6 +258,103 @@ def convkeep4D(data,filters,out):
     out=out.ctypes.data_as(ct.POINTER(ct.c_float))
 
     CASSERT(_dll.convkeep4D(data,filters,ni,li,yi,xi,yf,xf,out))
+
+@multicall(0,None,0)
+def convkeep4Dalllayer(data,filters,out):
+    """
+    [in] data is 4d-ndarray with dtype=float32, with dimension ordering:
+        Number_Of_Data, YSize, XSize, Layer_Of_Inputs
+    [in] filters is 4d-ndarray with dtype=float32, with dimension ordering:
+        Layer_Of_Outputs, FilterY, FilterX, Layer_Of_Inputs
+    [out] out is 4d-ndarray with dtype=float32, with dimension ordering:
+        Number_Of_Data, Layer_Of_Outputs, YSize, XSize
+
+    This function applies a no-shrinking convolution on each layer.
+    FilterX and FilterY must be odd number. The function will do a all-layer convolution.
+    """
+    ASSERTTYPE(data)
+    ASSERTTYPE(filters)
+    ASSERTTYPE(out)
+
+    (ni,yi,xi,li)=data.shape
+    (lfo,yf,xf,lf)=filters.shape
+    (no,lo,yo,xo)=out.shape
+
+    if ni!=no: raise Exception, "Data count mismatch"
+    if li!=lf: raise Exception, "Layers of input mismatch"
+    if lfo!=lo: raise Exception, "Layers of output mismatch"
+    if xi!=xo or yi!=yo: raise Exception, "Shape mismatch"
+    if (yf&1)!=1 or (xf&1)!=1: raise Exception, "FilterX and FilterY must be odd"
+
+    data=data.ctypes.data_as(ct.POINTER(ct.c_float))
+    filters=filters.ctypes.data_as(ct.POINTER(ct.c_float))
+    out=out.ctypes.data_as(ct.POINTER(ct.c_float))
+
+    CASSERT(_dll.convkeep4Dalllayer(data,filters,ni,li,yi,xi,lfo,yf,xf,out))
+
+@multicall(0,None,0)
+def gradconvkeep4Dalllayer(data,grad,filterout):
+    """
+    [in] data is 4d-ndarray with dtype=float32, with dimension ordering:
+        Number_Of_Data, YSize, XSize, Layer_Of_Inputs
+    [in] grad is 4d-ndarray with dtype=float32, with dimension ordering:
+        Number_Of_Data, Layer_Of_Outputs, YSize, XSize
+    [out] filterout is 4d-ndarray with dtype=float32, with dimension ordering:
+        Layer_Of_Outputs, FilterY, FilterX, Layer_Of_Inputs
+
+    Output the grad of filters in convkeep4Dalllayer function
+    """
+    ASSERTTYPE(data)
+    ASSERTTYPE(grad)
+    ASSERTTYPE(filterout)
+
+    (ni,yi,xi,li)=data.shape
+    (lfo,yf,xf,lf)=filterout.shape
+    (no,lo,yo,xo)=grad.shape
+
+    if ni!=no: raise Exception, "Data count mismatch"
+    if li!=lf: raise Exception, "Layers of input mismatch"
+    if lfo!=lo: raise Exception, "Layers of output mismatch"
+    if xi!=xo or yi!=yo: raise Exception, "Shape mismatch"
+    if (yf&1)!=1 or (xf&1)!=1: raise Ecxeption, "FilterX and FilterY must be odd"
+
+    data=data.ctypes.data_as(ct.POINTER(ct.c_float))
+    grad=grad.ctypes.data_as(ct.POINTER(ct.c_float))
+    filterout=filterout.ctypes.data_as(ct.POINTER(ct.c_float))
+
+    CASSERT(_dll.gradconvkeep4D(data,grad,filterout,ni,li,yi,xi,lfo,yf,xf))
+
+@multicall(0,None,0)
+def reverseconvkeep4Dalllayer(grad,filters,dataout):
+    """
+    [in] grad is 4d-ndarray with dtype=float32, with dimension ordering:
+        Number_Of_Data, Layer_Of_Outputs, YSize, XSize
+    [in] filters is 4d-ndarray with dtype=float32, with dimension ordering:
+        Layer_Of_Outputs, FilterY, FilterX, Layer_Of_Inputs
+    [out] dataout is 4d-ndarray with dtype=float32, with dimension ordering:
+        Number_Of_Data, YSize, XSize, Layer_Of_Inputs
+
+    Reverse convolution, passing grad from output layer to input layer.
+    """
+    ASSERTTYPE(grad)
+    ASSERTTYPE(filters)
+    ASSERTTYPE(dataout)
+
+    (ni,yi,xi,li)=dataout.shape
+    (lfo,yf,xf,lf)=filters.shape
+    (no,lo,yo,xo)=grad.shape
+
+    if ni!=no: raise Exception, "Data count mismatch"
+    if li!=lf: raise Exception, "Layers of input mismatch"
+    if lfo!=lo: raise Exception, "Layers of output mismatch"
+    if xi!=xo or yi!=yo: raise Exception, "Shape mismatch"
+    if (yf&1)!=1 or (xf&1)!=1: raise Ecxeption, "FilterX and FilterY must be odd"
+
+    grad=grad.ctypes.data_as(ct.POINTER(ct.c_float))
+    filters=filters.ctypes.data_as(ct.POINTER(ct.c_float))
+    dataout=dataout.ctypes.data_as(ct.POINTER(ct.c_float))
+
+    CASSERT(_dll.reverseconvkeep4D(grad,filters,dataout,ni,li,yi,xi,lfo,yf,xf))
 
 @multicall(0,None,0)
 def convolution4D(data,filters,out):

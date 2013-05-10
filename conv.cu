@@ -91,7 +91,154 @@ extern "C" {
         CUDAASSERT(cudaFree(deviceout));
         CUDAASSERT(cudaFree(devicedata));
         CUDAASSERT(cudaFree(devicefilters));
+
+        free(hostdata);
+        free(hostout);
         return 0;
+    }
+    DLL extern int convkeep4Dalllayer(float*data,float*filters,int nd,int dc,int dy,int dx,int fc,int fy,int fx,float*out)
+    {
+        int datablocksize=dy*dx*dc*sizeof(float);
+        int outblocksize=fc*dy*dx*sizeof(float);
+        int blockcount=CUDAMemory/max(datablocksize,outblocksize);
+        if (blockcount>nd) blockcount=nd+CUDAAligns-1;
+        blockcount=blockcount/CUDAAligns*CUDAAligns;
+        if (blockcount==0) return INSUFFICIENT_MEMORY;
+        
+        float*devicefilters,*devicedata,*deviceout;
+        CUDAASSERT(cudaMalloc(&devicefilters,dc*fy*fx*fc*sizeof(float)));
+        CUDAASSERT(cudaMemcpy(devicefilters,filters,dc*fy*fx*fc*sizeof(float),cudaMemcpyHostToDevice));
+
+        float*hostdata,*hostout;
+        hostdata=(float*)malloc(blockcount*datablocksize);
+        hostout=(float*)malloc(blockcount*outblocksize);
+
+        CUDAASSERT(cudaMalloc(&devicedata,blockcount*datablocksize));
+        CUDAASSERT(cudaMalloc(&deviceout,blockcount*outblocksize));
+        
+        for (unsigned long long pd=0;pd<nd;pd+=blockcount) {
+            int pdo=0;
+            for (;pdo<blockcount;pdo++) if (pdo+pd<nd)
+                for (int pc=0;pc<dc;pc++)
+                    for (int py=0;py<dy;py++)
+                        for (int px=0;px<dx;px++)
+                            hostdata[((pc*dy+py)*dx+px)*blockcount+pdo]=data[(((pdo+pd)*dy+py)*dx+px)*dc+pc];
+            else break;
+
+            dim3 gridDim;
+            unsigned long long xval=(blockcount*datablocksize/sizeof(float)+CUDALines-1)/CUDALines;
+            gridDim.y=(xval+1023)/1024; if (xval>1024) gridDim.x=1024; else gridDim.x=xval;
+            gridDim.z=(gridDim.y+1023)/1024; if (gridDim.y>=1024) gridDim.y=1024;
+            CUDAASSERT(cudaMemcpy(devicedata,hostdata,blockcount*datablocksize,cudaMemcpyHostToDevice));
+
+            kkeepconv4Dalllayer<<<gridDim,CUDALines>>>(devicedata,devicefilters,deviceout,pdo,blockcount,dc,dy,dx,fc,fy,fx);
+            CUDAASSERT(cudaMemcpy(hostout,deviceout,blockcount*datablocksize,cudaMemcpyDeviceToHost));
+
+            pdo=0;
+            for (;pdo<blockcount;pdo++) if (pdo+pd<nd)
+                for (int pc=0;pc<fc;pc++)
+                    for (int py=0;py<dy;py++)
+                        for (int px=0;px<dx;px++)
+                            out[(((pdo+pd)*fc+pc)*dy+py)*dx+px]=hostout[((pc*dy+py)*dx+px)*blockcount+pdo];
+            else break;
+        }
+        CUDAASSERT(cudaFree(deviceout));
+        CUDAASSERT(cudaFree(devicedata));
+        CUDAASSERT(cudaFree(devicefilters));
+
+        free(hostdata);
+        free(hostout);
+        return 0;
+    }
+
+
+    DLL extern int gradconvkeep4D(float*data,float*grad,float*filterout,int nd,int dc,int dy,int dx,int fc,int fy,int fx)
+    {
+		int datablocksize=dy*dx*dc*sizeof(float);
+        int outblocksize=dy*dx*fc*sizeof(float);
+		int blockcount=CUDAMemory/max(datablocksize,outblocksize);
+		if (blockcount>nd) blockcount=nd;
+		if (blockcount==0) return INSUFFICIENT_MEMORY;
+
+		float*devicefilters,*devicedata,*devicegrad;
+		CUDAASSERT(cudaMalloc(&devicefilters,fc*fy*fx*dc*sizeof(float)));
+		CUDAASSERT(cudaMemset(devicefilters,0,fc*fy*fx*dc*sizeof(float)));
+		CUDAASSERT(cudaMalloc(&devicedata,blockcount*datablocksize));
+		CUDAASSERT(cudaMalloc(&devicegrad,blockcount*datablocksize));
+
+		for (unsigned long long pd=0;pd<nd;pd+=blockcount) {
+			int pdo=min(blockcount,(int)(nd-pd));
+			CUDAASSERT(cudaMemcpy(devicedata,data+pd*dy*dx*dc,pdo*datablocksize,cudaMemcpyHostToDevice));
+			CUDAASSERT(cudaMemcpy(devicegrad,grad+pd*dy*dx*fc,pdo*outblocksize,cudaMemcpyHostToDevice));
+
+			unsigned long long xval=(fc*fy*fx*dc+CUDALines-1)/CUDALines;
+			dim3 gridDim;
+			gridDim.y=(xval+1023)/1024; if (xval>=1024) gridDim.x=1024; else gridDim.x=xval;
+			gridDim.z=(gridDim.y+1023)/1024; if (gridDim.y>=1024) gridDim.y=1024;
+
+			kgradconvkeep4D<<<gridDim,CUDALines>>>(devicedata,devicegrad,devicefilters,pdo,dy,dx,dc,fc,fy,fx);
+			CUDAASSERT(cudaThreadSynchronize());
+		}
+		CUDAASSERT(cudaMemcpy(filterout,devicefilters,fc*fy*fx*dc*sizeof(float),cudaMemcpyDeviceToHost));
+		CUDAASSERT(cudaFree(devicefilters));
+		CUDAASSERT(cudaFree(devicedata));
+		CUDAASSERT(cudaFree(devicegrad));
+		return 0;
+	
+    }
+    DLL extern int reverseconvkeep4D(float*grad,float*filter,float*dataout,int nd,int dc,int dy,int dx,int fc,int fy,int fx)
+    {
+
+		int datablocksize=dy*dx*dc*sizeof(float);
+		int outblocksize=fc*dy*dx*sizeof(float);
+		int blockcount=min(CUDAMemory/datablocksize,CUDAMemory/outblocksize);
+		if (blockcount>nd) blockcount=nd+CUDAAligns-1;
+		blockcount=blockcount/CUDAAligns*CUDAAligns;
+		if (blockcount==0) return INSUFFICIENT_MEMORY;
+
+		float*devicefilters,*devicedata,*deviceout;
+		CUDAASSERT(cudaMalloc(&devicefilters,fc*fy*fx*dc*sizeof(float)));
+		CUDAASSERT(cudaMemcpy(devicefilters,filter,fc*fy*fx*dc*sizeof(float),cudaMemcpyHostToDevice));
+
+		float*hostdata,*hostout;
+		hostdata=(float*)malloc(blockcount*datablocksize);
+		hostout=(float*)malloc(blockcount*outblocksize);
+
+		CUDAASSERT(cudaMalloc(&devicedata,blockcount*datablocksize));
+		CUDAASSERT(cudaMalloc(&deviceout,blockcount*outblocksize));
+
+		for (unsigned long long pd=0;pd<nd;pd+=blockcount) {
+			int pdo=0;
+			for (;pdo<blockcount;pdo++) if (pdo+pd<nd)
+				for (int pc=0;pc<fc;pc++)
+					for (int py=0;py<dy;py++)
+						for (int px=0;px<dx;px++)
+							hostout[((pc*dy+py)*dx+px)*blockcount+pdo]=grad[(((pdo+pd)*fc+pc)*dy+py)*dx+px];
+			else break;
+
+			unsigned long long xval=(blockcount*outblocksize/sizeof(float)+CUDALines-1)/CUDALines;
+			dim3 gridDim;
+			gridDim.y=(xval+1023)/1024; if (xval>=1024) gridDim.x=1024; else gridDim.x=xval;
+			gridDim.z=(gridDim.y+1023)/1024; if (gridDim.y>=1024) gridDim.y=1024;
+			CUDAASSERT(cudaMemcpy(deviceout,hostout,blockcount*outblocksize,cudaMemcpyHostToDevice));
+			CUDAASSERT(cudaMemset(devicedata,0,blockcount*datablocksize));
+			kreverseconvkeep4D<<<gridDim,CUDALines>>>(devicedata,devicefilters,deviceout,pdo,blockcount,dy,dx,dc,fc,fy,fx);
+			CUDAASSERT(cudaMemcpy(hostdata,devicedata,blockcount*datablocksize,cudaMemcpyDeviceToHost));
+
+			for (pdo=0;pdo<blockcount;pdo++) if (pdo+pd<nd)
+				for (int py=0;py<dy;py++)
+					for (int px=0;px<dx;px++)
+						for (int pc=0;pc<dc;pc++)
+							dataout[(((pdo+pd)*dy+py)*dx+px)*dc+pc]=hostdata[((py*dx+px)*dc+pc)*blockcount+pdo];
+			else break;
+
+		}
+		CUDAASSERT(cudaFree(devicefilters));
+		CUDAASSERT(cudaFree(devicedata));
+		CUDAASSERT(cudaFree(deviceout));
+		free(hostdata);
+		free(hostout);
+		return 0;
     }
 	/*
 	The function to do 4D convolution
