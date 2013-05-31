@@ -115,7 +115,6 @@ extern "C" {
 
         CUDAASSERT(cudaMalloc(&devicedata,blockcount*datablocksize));
         CUDAASSERT(cudaMalloc(&deviceout,blockcount*outblocksize));
-        
         for (unsigned long long pd=0;pd<nd;pd+=blockcount) {
             int pdo=0;
             for (;pdo<blockcount;pdo++) if (pdo+pd<nd)
@@ -126,13 +125,13 @@ extern "C" {
             else break;
 
             dim3 gridDim;
-            unsigned long long xval=(blockcount*datablocksize/sizeof(float)+CUDALines-1)/CUDALines;
+            unsigned long long xval=(blockcount*outblocksize/sizeof(float)+CUDALines-1)/CUDALines;
             gridDim.y=(xval+1023)/1024; if (xval>1024) gridDim.x=1024; else gridDim.x=xval;
             gridDim.z=(gridDim.y+1023)/1024; if (gridDim.y>=1024) gridDim.y=1024;
             CUDAASSERT(cudaMemcpy(devicedata,hostdata,blockcount*datablocksize,cudaMemcpyHostToDevice));
 
             kkeepconv4Dalllayer<<<gridDim,CUDALines>>>(devicedata,devicefilters,deviceout,pdo,blockcount,dc,dy,dx,fc,fy,fx);
-            CUDAASSERT(cudaMemcpy(hostout,deviceout,blockcount*datablocksize,cudaMemcpyDeviceToHost));
+            CUDAASSERT(cudaMemcpy(hostout,deviceout,blockcount*outblocksize,cudaMemcpyDeviceToHost));
 
             pdo=0;
             for (;pdo<blockcount;pdo++) if (pdo+pd<nd)
@@ -164,7 +163,7 @@ extern "C" {
 		CUDAASSERT(cudaMalloc(&devicefilters,fc*fy*fx*dc*sizeof(float)));
 		CUDAASSERT(cudaMemset(devicefilters,0,fc*fy*fx*dc*sizeof(float)));
 		CUDAASSERT(cudaMalloc(&devicedata,blockcount*datablocksize));
-		CUDAASSERT(cudaMalloc(&devicegrad,blockcount*datablocksize));
+		CUDAASSERT(cudaMalloc(&devicegrad,blockcount*outblocksize));
 
 		for (unsigned long long pd=0;pd<nd;pd+=blockcount) {
 			int pdo=min(blockcount,(int)(nd-pd));

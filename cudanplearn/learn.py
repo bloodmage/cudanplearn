@@ -292,7 +292,7 @@ def convkeep4Dalllayer(data,filters,out):
 
     CASSERT(_dll.convkeep4Dalllayer(data,filters,ni,li,yi,xi,lfo,yf,xf,out))
 
-@multicall(0,None,0)
+@multicall(0,0,-1)
 def gradconvkeep4Dalllayer(data,grad,filterout):
     """
     [in] data is 4d-ndarray with dtype=float32, with dimension ordering:

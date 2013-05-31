@@ -63,14 +63,15 @@ __global__ void kgradconvkeep4D(const float*__restrict__ devicedata,const float*
     int pfx=pc/dc; pc%=dc;
     int pfy=pfx/fx; pfx%=fx;
     int pco=pfy/fy; pfy%=fy;
-
+    pfx-=fx/2;
+    pfy-=fy/2;
     float tmp=0.0f;
     for (int pi=0;pi<pdo;pi++)
-        for (int pyo=0;pyo<oy;pyo++)
-            for (int pxo=0;pxo<ox;pxo++)
+        for (int pyo=0;pyo<dy;pyo++) if (((uint32)(pyo+pfy))<dy)
+            for (int pxo=0;pxo<dx;pxo++) if (((uint32)(pxo+pfx))<dx)
                 tmp+=devicegrad[((pi*fc+pco)*dy+pyo)*dx+pxo]*devicedata[((pi*dy+pyo+pfy)*dx+pxo+pfx)*dc+pc];
 
-    devicefilters[((pco*fy+pfy)*fx+pfx)*dc+pc]+=tmp;
+    devicefilters[((pco*fy+pfy+fy/2)*fx+pfx+fx/2)*dc+pc]+=tmp;
 }
 __global__ void kreverseconvkeep4D(float*__restrict__ devicedata,const float*__restrict__ devicefilters,const float*__restrict__ deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx)
 {
@@ -84,7 +85,7 @@ __global__ void kreverseconvkeep4D(float*__restrict__ devicedata,const float*__r
 	for (int py=0;py<fy;py++) if (((uint32)(py+pyo-fy/2))<dy)
 		for (int px=0;px<fx;px++) if (((uint32)(px+pxo-fx/2))<dx)
             for (int pc=0;pc<dc;pc++)
-			    atomicAdd(&devicedata[(((py+pyo)*dx+px+pxo)*dc+pc)*blockcount+di],devicefilters[((pco*fy+py)*fx+px)*dc+pc] * deviceout[((pco*dy+py)*dx+px)*blockcount+di]);
+			    atomicAdd(&devicedata[(((py+pyo-fy/2)*dx+px+pxo-fx/2)*dc+pc)*blockcount+di],devicefilters[((pco*fy+py)*fx+px)*dc+pc] * deviceout[((pco*dy+pyo)*dx+pxo)*blockcount+di]);
 }
 
 __global__ void kconvolution4D(const float*__restrict__ devicedata,const float*__restrict__ devicefilters,float*__restrict__ deviceout,uint32 pdo,uint32 blockcount,uint32 dy,uint32 dx,uint32 dc,uint32 fc,uint32 fy,uint32 fx,uint32 oy,uint32 ox)
